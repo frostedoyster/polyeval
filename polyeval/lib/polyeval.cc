@@ -36,10 +36,54 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
     }
 
     // auto end = std::chrono::high_resolution_clock::now();
-    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
+    // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    // std::cout << "Execution time: " << duration.count() << " us" << std::endl;
 
     return atomic_energies;
+}
+
+
+template <typename scalar_t>
+std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
+    long n_monomials = indices.size(1);
+    long n_atoms = nu1_basis.size(0);
+    long n_nu1 = nu1_basis.size(1);
+    long n_basis = indices.size(0);
+
+    scalar_t* nu1_basis_ptr = nu1_basis.data_ptr<scalar_t>();
+    scalar_t* multipliers_ptr = multipliers.data_ptr<scalar_t>();
+    long* indices_ptr = indices.data_ptr<long>();
+    scalar_t* grad_atomic_energies_ptr = grad_atomic_energies.data_ptr<scalar_t>();
+
+    torch::Tensor grad_nu1_basis = torch::Tensor();
+
+    if (nu1_basis.requires_grad()) {
+        // auto start = std::chrono::high_resolution_clock::now();
+        grad_nu1_basis = torch::zeros_like(nu1_basis);
+        scalar_t* grad_nu1_basis_ptr = grad_nu1_basis.data_ptr<scalar_t>();
+        # pragma omp parallel for
+        for (long i_atom = 0; i_atom < n_atoms; i_atom++) {
+            scalar_t grad_atomic_energy = grad_atomic_energies_ptr[i_atom];
+            long i_atom_shift = i_atom*n_nu1;
+            for (long i_basis = 0; i_basis < n_basis; i_basis++) {
+                long i_basis_shift = n_monomials*i_basis;
+                scalar_t base_multiplier = grad_atomic_energy*multipliers_ptr[i_basis];
+                for (long i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
+                    scalar_t temp = base_multiplier;
+                    for (long j_monomial = 0; j_monomial < n_monomials; j_monomial++) {
+                        if (j_monomial == i_monomial) continue;
+                        temp *= nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+j_monomial]];
+                    }
+                    grad_nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+i_monomial]] += temp;
+                }
+            }
+        }
+        // auto end = std::chrono::high_resolution_clock::now();
+        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        // std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
+    }
+
+    return {grad_nu1_basis, torch::Tensor(), torch::Tensor()};
 }
 
 
@@ -53,6 +97,7 @@ public:
         torch::Tensor indices,
         torch::Tensor multipliers
     ) {
+        if (nu1_basis.requires_grad()) ctx->save_for_backward({nu1_basis, indices, multipliers});
 
         // Dispatch type by hand
         if (nu1_basis.dtype() == c10::kDouble) {
@@ -66,7 +111,20 @@ public:
 
     static std::vector<torch::Tensor> backward(torch::autograd::AutogradContext *ctx, std::vector<torch::Tensor> grad_outputs) {
 
-        throw std::runtime_error("not implemented");
+        std::vector<torch::Tensor> saved_variables = ctx->get_saved_variables();
+        torch::Tensor nu1_basis = saved_variables[0];
+        torch::Tensor indices = saved_variables[1];
+        torch::Tensor multipliers = saved_variables[2];
+        torch::Tensor grad_atomic_energies = grad_outputs[0].contiguous();
+
+        // Dispatch type by hand
+        if (nu1_basis.dtype() == c10::kDouble) {
+            return backward_t<double>(grad_atomic_energies, nu1_basis, indices, multipliers);
+        } else if (nu1_basis.dtype() == c10::kFloat) {
+            return backward_t<float>(grad_atomic_energies, nu1_basis, indices, multipliers);
+        } else {
+            throw std::runtime_error("Unsupported dtype");
+        }
     }
 };
 

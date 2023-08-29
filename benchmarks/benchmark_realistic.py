@@ -16,18 +16,37 @@ def benchmark(dtype, device):
     indices = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.long, device=device)
     multipliers = torch.rand((n_basis,), dtype=dtype, device=device)
 
-    # Warm-up optimized:
+    # Warm-up:
     for _ in range(10):
         optimized_implementation(nu1_basis, indices, multipliers)
 
-    # Benchmark optimized:
+    # Benchmark:
     start = time.time()
     for _ in range(1000):
         optimized_implementation(nu1_basis, indices, multipliers)
     if device == "cuda":
         torch.cuda.synchronize()
     end = time.time()
-    print(f"Execution time (optimized): {end-start} ms")
+    print(f"Execution time FW (optimized): {end-start} ms")
+
+    nu1_basis.requires_grad_(True)
+
+    # Warm-up:
+    for _ in range(10):
+        atomic_energies = optimized_implementation(nu1_basis, indices, multipliers)
+        total_energy = torch.sum(atomic_energies)
+        total_energy.backward()
+
+    # Benchmark:
+    start = time.time()
+    for _ in range(1000):
+        atomic_energies = optimized_implementation(nu1_basis, indices, multipliers)
+        total_energy = torch.sum(atomic_energies)
+        total_energy.backward()
+    if device == "cuda":
+        torch.cuda.synchronize()
+    end = time.time()
+    print(f"Execution time FW+BW (optimized): {end-start} ms")
 
     print()
 
