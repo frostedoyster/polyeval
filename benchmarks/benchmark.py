@@ -1,5 +1,5 @@
 import torch
-import polyeval
+from polyeval.lib import reference_implementation, optimized_implementation
 import time
 
 
@@ -16,21 +16,37 @@ def benchmark(dtype, device):
     indices = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.long, device=device)
     multipliers = torch.rand((n_basis,), dtype=dtype, device=device)
 
-    # Warm-up:
+    # Warm-up reference:
     for _ in range(10):
-        polyeval.python_implementation(nu1_basis, indices, multipliers)
+        reference_implementation(nu1_basis, indices, multipliers)
 
-    # Benchmark:
+    # Benchmark reference:
     start = time.time()
     for _ in range(1000):
-        polyeval.python_implementation(nu1_basis, indices, multipliers)
+        reference_implementation(nu1_basis, indices, multipliers)
     if device == "cuda":
         torch.cuda.synchronize()
     end = time.time()
-    print(f"Execution time: {end-start} ms")
+    print(f"Execution time (reference): {end-start} ms")
+
+    # Warm-up optimized:
+    for _ in range(10):
+        optimized_implementation(nu1_basis, indices, multipliers)
+
+    # Benchmark optimized:
+    start = time.time()
+    for _ in range(1000):
+        optimized_implementation(nu1_basis, indices, multipliers)
+    if device == "cuda":
+        torch.cuda.synchronize()
+    end = time.time()
+    print(f"Execution time (optimized): {end-start} ms")
+
+    print()
 
 
 if __name__ == "__main__":
+    print()
     benchmark(torch.float64, "cpu")
     benchmark(torch.float32, "cpu")
     if torch.cuda.is_available():
