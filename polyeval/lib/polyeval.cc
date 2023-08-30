@@ -4,9 +4,9 @@
 #include <torch/extension.h>
 
 
-template <typename scalar_t>
+template <typename scalar_t, long n_monomials>
 torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
-    long n_monomials = indices.size(1);
+    // long n_monomials = indices.size(1);
     long n_atoms = nu1_basis.size(0);
     long n_nu1 = nu1_basis.size(1);
     long n_basis = indices.size(0);
@@ -43,9 +43,9 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
 }
 
 
-template <typename scalar_t>
+template <typename scalar_t, long n_monomials>
 std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
-    long n_monomials = indices.size(1);
+    // long n_monomials = indices.size(1);
     long n_atoms = nu1_basis.size(0);
     long n_nu1 = nu1_basis.size(1);
     long n_basis = indices.size(0);
@@ -101,9 +101,9 @@ public:
 
         // Dispatch type by hand
         if (nu1_basis.dtype() == c10::kDouble) {
-            return forward_t<double>(nu1_basis, indices, multipliers);
+            return forward_t<double, 4>(nu1_basis, indices, multipliers);
         } else if (nu1_basis.dtype() == c10::kFloat) {
-            return forward_t<float>(nu1_basis, indices, multipliers);
+            return forward_t<float, 4>(nu1_basis, indices, multipliers);
         } else {
             throw std::runtime_error("Unsupported dtype");
         }
@@ -119,9 +119,9 @@ public:
 
         // Dispatch type by hand
         if (nu1_basis.dtype() == c10::kDouble) {
-            return backward_t<double>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            return backward_t<double, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
         } else if (nu1_basis.dtype() == c10::kFloat) {
-            return backward_t<float>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            return backward_t<float, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
         } else {
             throw std::runtime_error("Unsupported dtype");
         }
