@@ -7,6 +7,7 @@ from .polyeval import reference_implementation
 _HERE = os.path.realpath(os.path.dirname(__file__))
 
 torch.ops.load_library(_HERE + '/polyeval_cc.so')
+
 if torch.cuda.is_available():
     torch.ops.load_library(_HERE + '/polyeval_cuda.so')
 
