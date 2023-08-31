@@ -31,9 +31,9 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
                 temp *= nu1_basis_ptr_atom[indices_ptr_basis[i_monomial]];
             }
             result += temp;
+            indices_ptr_basis += n_monomials;
         }
         atomic_energies_ptr[i_atom] = result;
-        indices_ptr_basis += n_monomials;
     }
     // auto end = std::chrono::high_resolution_clock::now();
     // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
