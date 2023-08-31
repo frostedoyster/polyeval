@@ -39,7 +39,7 @@ multipliers_ref = torch.rand((n_basis,), dtype=dtype, device=device)
 
 
 cpu = torch.ops.polyeval_cc.polyeval(nu1_basis_ref.cpu().double(
-), indices_ref.cpu().long(), multipliers_ref.cpu().double())
+), indices_ref.cpu(), multipliers_ref.cpu().double())
 
 indices = indices_ref.transpose(-1, -2).contiguous()
 
@@ -48,7 +48,7 @@ print(indices.shape)
 start = time()
 for i in range(1000):
     cuda = torch.ops.polyeval_cu.polyeval(nu1_basis_ref, indices, multipliers_ref, 256, 4)
-end = time()
+end = time() 
 torch.cuda.synchronize()
 
 print(end - start)

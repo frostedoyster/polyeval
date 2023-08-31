@@ -31,6 +31,7 @@ __host__ __device__ int32_t find_integer_divisor(int32_t x, int32_t bdim)
 }
 
 #define NTHREADS_FOR_BASIS 32
+#define WARP_SIZE 32
 
 template <typename scalar_t>
 __global__ void forward_kernel(
@@ -132,7 +133,7 @@ __global__ void forward_kernel(
     }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, uint8_t n_monomials>
 __global__ void forward2_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> nu1_basis,   // [natoms, n_nu1]
     const torch::PackedTensorAccessor32<int16_t, 2, torch::RestrictPtrTraits> indices,      // [nbasis, polynomial_order]
@@ -150,6 +151,7 @@ __global__ void forward2_kernel(
 
     /* SHARED BUFFERS */
     scalar_t *buffer_nu1 = shared_array<scalar_t>(blockDim.y * nnu1, sptr, &space);
+    scalar_t *buffer_output = shared_array<scalar_t>(blockDim.x / WARP_SIZE, sptr, &space);
 
     int32_t atom_id = blockIdx.x * blockDim.y + threadIdx.y;
 
@@ -170,43 +172,53 @@ __global__ void forward2_kernel(
     scalar_t c = 0.0;           // kahans summation...
     output[atom_id] = 0.0;
 
-    for (int basis = threadIdx.x; basis < nbasis; basis += blockDim.x)
+    for (int32_t basis = threadIdx.x; basis < nbasis; basis += blockDim.x)
     {
         scalar_t tmp = 1.0;
 
-        for (int i_monomial = 0; i_monomial < indices.size(0); i_monomial++)
+#pragma unroll
+        for (uint8_t i_monomial = 0; i_monomial < n_monomials; i_monomial++)
         {
-
             int16_t idx = indices[i_monomial][basis];
 
             scalar_t val = buffer_nu1[threadIdx.y * nnu1 + idx];
 
             tmp *= val;
         }
+
+        // kahans summation for F32
         scalar_t y = tmp * multipliers[basis] - c;
         scalar_t t = atom_energy + y;
         c = (t - atom_energy) - y;
         atom_energy = t;
-
-        // atom_energy += tmp * multipliers[basis];
     }
 
-    for (int offset = 32 / 2; offset > 0; offset /= 2)
+    for (int32_t offset = WARP_SIZE / 2; offset > 0; offset /= 2)
     {
         atom_energy += __shfl_down_sync(FULL_MASK, atom_energy, offset);
     }
 
     // if using nthreadx > 32, then we need to add % 32 == 0 in shared mem
-    if (blockDim.x > 32)
+    if (blockDim.x > WARP_SIZE && threadIdx.x % WARP_SIZE == 0)
     {
+        buffer_output[threadIdx.x / WARP_SIZE] = atom_energy;
     }
 
-    if (threadIdx.x % 32 == 0)
+    __syncthreads();
+
+    if (threadIdx.x == 0)
     {
-        atomicAdd(&output[atom_id], atom_energy);
+
+        for (int i = 1; i < blockDim.x / WARP_SIZE; i++)
+        {
+            atom_energy += buffer_output[i];
+        }
+
+        output[atom_id] = atom_energy;
     }
 }
 
+template <uint8_t n_monomials>
 torch::Tensor forward_gpu(torch::Tensor nu1_basis,
                           torch::Tensor indices,
                           torch::Tensor multipliers,
@@ -232,16 +244,19 @@ torch::Tensor forward_gpu(torch::Tensor nu1_basis,
     AT_DISPATCH_FLOATING_TYPES(
         nu1_basis.type(), "forward_gpu", ([&]
                                           {
-            void *sptr = nullptr;
-            size_t space = 0;
+                                              void *sptr = nullptr;
+                                              size_t space = 0;
 
-            shared_array<scalar_t>(nthready * nnu1, sptr, &space);
+                                              shared_array<scalar_t>(nthready * nnu1, sptr, &space);
+                                            shared_array<scalar_t>(nthreadx / WARP_SIZE, sptr, &space);
 
-            forward2_kernel<scalar_t><<<block_dim, grid_dim, space>>>(
-                nu1_basis.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                indices.packed_accessor32<int16_t, 2, torch::RestrictPtrTraits>(),
-                multipliers.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>(),
-                output.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>()); }));
+                                              forward2_kernel<scalar_t, n_monomials><<<block_dim, grid_dim, space>>>(
+                                                  nu1_basis.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                                                  indices.packed_accessor32<int16_t, 2, torch::RestrictPtrTraits>(),
+                                                  multipliers.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>(),
+                                                  output.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>()); }
+
+                                          ));
 
     cudaDeviceSynchronize();
 
@@ -259,7 +274,27 @@ public:
         int64_t nthreadx,
         int64_t nthready)
     {
-        torch::Tensor result = forward_gpu(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        torch::Tensor result;
+        if (indices.size(0) == 2)
+        {
+            result = forward_gpu<2>(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        }
+        else if (indices.size(0) == 3)
+        {
+            result = forward_gpu<3>(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        }
+        else if (indices.size(0) == 4)
+        {
+            result = forward_gpu<4>(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        }
+        else if (indices.size(0) == 5)
+        {
+            result = forward_gpu<5>(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        }
+        else if (indices.size(0) == 6)
+        {
+            result = forward_gpu<6>(nu1_basis, indices, multipliers, nthreadx, nthready, 1);
+        }
 
         return result;
     }
