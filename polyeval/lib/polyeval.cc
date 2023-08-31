@@ -79,8 +79,8 @@ std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch:
             }
         }
         // auto end = std::chrono::high_resolution_clock::now();
-        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        // std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
+        // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        // std::cout << "Execution time: " << duration.count() << " us" << std::endl;
     }
 
     return {grad_nu1_basis, torch::Tensor(), torch::Tensor()};
@@ -101,9 +101,19 @@ public:
 
         // Dispatch type by hand
         if (nu1_basis.dtype() == c10::kDouble) {
-            return forward_t<double, 4>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 2) return forward_t<double, 2>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 3) return forward_t<double, 3>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 4) return forward_t<double, 4>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 5) return forward_t<double, 5>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 6) return forward_t<double, 6>(nu1_basis, indices, multipliers);
+            throw std::runtime_error("Polynomial order is too high.");   
         } else if (nu1_basis.dtype() == c10::kFloat) {
-            return forward_t<float, 4>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 2) return forward_t<float, 2>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 3) return forward_t<float, 3>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 4) return forward_t<float, 4>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 5) return forward_t<float, 5>(nu1_basis, indices, multipliers);
+            if (indices.size(1) == 6) return forward_t<float, 6>(nu1_basis, indices, multipliers); 
+            throw std::runtime_error("Polynomial order is too high.");     
         } else {
             throw std::runtime_error("Unsupported dtype");
         }
@@ -119,9 +129,19 @@ public:
 
         // Dispatch type by hand
         if (nu1_basis.dtype() == c10::kDouble) {
-            return backward_t<double, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 2) return backward_t<double, 2>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 3) return backward_t<double, 3>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 4) return backward_t<double, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 5) return backward_t<double, 5>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 6) return backward_t<double, 6>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            throw std::runtime_error("Polynomial order is too high.");
         } else if (nu1_basis.dtype() == c10::kFloat) {
-            return backward_t<float, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 2) return backward_t<float, 2>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 3) return backward_t<float, 3>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 4) return backward_t<float, 4>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 5) return backward_t<float, 5>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            if (indices.size(1) == 6) return backward_t<float, 6>(grad_atomic_energies, nu1_basis, indices, multipliers);
+            throw std::runtime_error("Polynomial order is too high.");
         } else {
             throw std::runtime_error("Unsupported dtype");
         }
