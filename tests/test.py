@@ -38,9 +38,6 @@ def test(dtype, device):
     total_energy_ref.backward()
     total_energy_opt.backward()
 
-    print(nu1_basis_ref.grad)
-    print(nu1_basis_opt.grad)
-
     assert torch.allclose(
         nu1_basis_ref.grad,
         nu1_basis_opt.grad

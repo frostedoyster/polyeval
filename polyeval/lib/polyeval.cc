@@ -4,12 +4,12 @@
 #include <torch/extension.h>
 
 
-template <typename scalar_t, int16_t n_monomials>
+template <typename scalar_t, uint8_t n_monomials>
 torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
-    // long n_monomials = indices.size(1);
-    long n_atoms = nu1_basis.size(0);
-    long n_nu1 = nu1_basis.size(1);
-    long n_basis = indices.size(0);
+    // int64_t n_monomials = indices.size(1);
+    int64_t n_atoms = nu1_basis.size(0);
+    int64_t n_nu1 = nu1_basis.size(1);
+    int64_t n_basis = indices.size(0);
 
     scalar_t* nu1_basis_ptr = nu1_basis.data_ptr<scalar_t>();
     scalar_t* multipliers_ptr = multipliers.data_ptr<scalar_t>();
@@ -19,22 +19,22 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
     scalar_t* atomic_energies_ptr = atomic_energies.data_ptr<scalar_t>();
 
     // auto start = std::chrono::high_resolution_clock::now();
-
     # pragma omp parallel for
-    for (long i_atom = 0; i_atom < n_atoms; i_atom++) {
+    for (int64_t i_atom = 0; i_atom < n_atoms; i_atom++) {
         scalar_t result = 0.0;
-        long i_atom_shift = i_atom*n_nu1;
-        for (long i_basis = 0; i_basis < n_basis; i_basis++) {
-            long i_basis_shift = n_monomials*i_basis;
+        int64_t nu1_atom_shift = i_atom*n_nu1;
+        scalar_t* nu1_basis_ptr_atom = nu1_basis_ptr + nu1_atom_shift;
+        int16_t* indices_ptr_basis = indices_ptr;
+        for (int64_t i_basis = 0; i_basis < n_basis; i_basis++) {
             scalar_t temp = multipliers_ptr[i_basis];
-            for (int16_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
-                temp *= nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+i_monomial]];
+            for (uint8_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
+                temp *= nu1_basis_ptr_atom[indices_ptr_basis[i_monomial]];
             }
             result += temp;
         }
         atomic_energies_ptr[i_atom] = result;
+        indices_ptr_basis += n_monomials;
     }
-
     // auto end = std::chrono::high_resolution_clock::now();
     // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     // std::cout << "Execution time: " << duration.count() << " us" << std::endl;
@@ -43,12 +43,12 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
 }
 
 
-template <typename scalar_t, long n_monomials>
+template <typename scalar_t, uint8_t n_monomials>
 std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
-    // long n_monomials = indices.size(1);
-    long n_atoms = nu1_basis.size(0);
-    long n_nu1 = nu1_basis.size(1);
-    long n_basis = indices.size(0);
+    // int64_t n_monomials = indices.size(1);
+    int64_t n_atoms = nu1_basis.size(0);
+    int64_t n_nu1 = nu1_basis.size(1);
+    int64_t n_basis = indices.size(0);
 
     scalar_t* nu1_basis_ptr = nu1_basis.data_ptr<scalar_t>();
     scalar_t* multipliers_ptr = multipliers.data_ptr<scalar_t>();
@@ -62,20 +62,23 @@ std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch:
         grad_nu1_basis = torch::zeros_like(nu1_basis);
         scalar_t* grad_nu1_basis_ptr = grad_nu1_basis.data_ptr<scalar_t>();
         # pragma omp parallel for
-        for (long i_atom = 0; i_atom < n_atoms; i_atom++) {
+        for (int64_t i_atom = 0; i_atom < n_atoms; i_atom++) {
             scalar_t grad_atomic_energy = grad_atomic_energies_ptr[i_atom];
-            long i_atom_shift = i_atom*n_nu1;
-            for (long i_basis = 0; i_basis < n_basis; i_basis++) {
-                long i_basis_shift = n_monomials*i_basis;
+            int64_t nu1_atom_shift = i_atom*n_nu1;
+            scalar_t* nu1_basis_ptr_atom = nu1_basis_ptr + nu1_atom_shift;
+            scalar_t* grad_nu1_basis_ptr_atom = grad_nu1_basis_ptr + nu1_atom_shift;
+            int16_t* indices_ptr_basis = indices_ptr;
+            for (int64_t i_basis = 0; i_basis < n_basis; i_basis++) {
                 scalar_t base_multiplier = grad_atomic_energy*multipliers_ptr[i_basis];
-                for (int16_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
+                for (uint8_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
                     scalar_t temp = base_multiplier;
-                    for (int16_t j_monomial = 0; j_monomial < n_monomials; j_monomial++) {
+                    for (uint8_t j_monomial = 0; j_monomial < n_monomials; j_monomial++) {
                         if (j_monomial == i_monomial) continue;
-                        temp *= nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+j_monomial]];
+                        temp *= nu1_basis_ptr_atom[indices_ptr_basis[j_monomial]];
                     }
-                    grad_nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+i_monomial]] += temp;
+                    grad_nu1_basis_ptr_atom[indices_ptr_basis[i_monomial]] += temp;
                 }
+                indices_ptr_basis += n_monomials;
             }
         }
         // auto end = std::chrono::high_resolution_clock::now();
