@@ -151,7 +151,6 @@ __global__ void forward2_kernel(
 
     /* SHARED BUFFERS */
     scalar_t *buffer_nu1 = shared_array<scalar_t>(blockDim.y * nnu1, sptr, &space);
-    scalar_t *buffer_output = shared_array<scalar_t>(blockDim.x / WARP_SIZE, sptr, &space);
 
     int32_t atom_id = blockIdx.x * blockDim.y + threadIdx.y;
 
@@ -198,23 +197,15 @@ __global__ void forward2_kernel(
         atom_energy += __shfl_down_sync(FULL_MASK, atom_energy, offset);
     }
 
-    // if using nthreadx > 32, then we need to add % 32 == 0 in shared mem
+    /*// if using nthreadx > 32, then we need to add % 32 == 0 in shared mem
     if (blockDim.x > WARP_SIZE && threadIdx.x % WARP_SIZE == 0)
     {
         buffer_output[threadIdx.x / WARP_SIZE] = atom_energy;
-    }
+    } */
 
-    __syncthreads();
-
-    if (threadIdx.x == 0)
+    if (threadIdx.x % WARP_SIZE == 0)
     {
-
-        for (int i = 1; i < blockDim.x / WARP_SIZE; i++)
-        {
-            atom_energy += buffer_output[i];
-        }
-
-        output[atom_id] = atom_energy;
+        atomicAdd(&output[atom_id], atom_energy);
     }
 }
 
@@ -248,7 +239,6 @@ torch::Tensor forward_gpu(torch::Tensor nu1_basis,
                                               size_t space = 0;
 
                                               shared_array<scalar_t>(nthready * nnu1, sptr, &space);
-                                            shared_array<scalar_t>(nthreadx / WARP_SIZE, sptr, &space);
 
                                               forward2_kernel<scalar_t, n_monomials><<<block_dim, grid_dim, space>>>(
                                                   nu1_basis.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
