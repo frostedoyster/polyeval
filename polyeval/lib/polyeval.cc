@@ -4,7 +4,7 @@
 #include <torch/extension.h>
 
 
-template <typename scalar_t, long n_monomials>
+template <typename scalar_t, int16_t n_monomials>
 torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::Tensor multipliers) {
     // long n_monomials = indices.size(1);
     long n_atoms = nu1_basis.size(0);
@@ -13,7 +13,7 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
 
     scalar_t* nu1_basis_ptr = nu1_basis.data_ptr<scalar_t>();
     scalar_t* multipliers_ptr = multipliers.data_ptr<scalar_t>();
-    long* indices_ptr = indices.data_ptr<long>();
+    int16_t* indices_ptr = indices.data_ptr<int16_t>();
 
     torch::Tensor atomic_energies = torch::empty({n_atoms}, torch::TensorOptions().dtype(nu1_basis.dtype()));
     scalar_t* atomic_energies_ptr = atomic_energies.data_ptr<scalar_t>();
@@ -27,7 +27,7 @@ torch::Tensor forward_t(torch::Tensor nu1_basis, torch::Tensor indices, torch::T
         for (long i_basis = 0; i_basis < n_basis; i_basis++) {
             long i_basis_shift = n_monomials*i_basis;
             scalar_t temp = multipliers_ptr[i_basis];
-            for (long i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
+            for (int16_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
                 temp *= nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+i_monomial]];
             }
             result += temp;
@@ -52,7 +52,7 @@ std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch:
 
     scalar_t* nu1_basis_ptr = nu1_basis.data_ptr<scalar_t>();
     scalar_t* multipliers_ptr = multipliers.data_ptr<scalar_t>();
-    long* indices_ptr = indices.data_ptr<long>();
+    int16_t* indices_ptr = indices.data_ptr<int16_t>();
     scalar_t* grad_atomic_energies_ptr = grad_atomic_energies.data_ptr<scalar_t>();
 
     torch::Tensor grad_nu1_basis = torch::Tensor();
@@ -68,9 +68,9 @@ std::vector<torch::Tensor> backward_t(torch::Tensor grad_atomic_energies, torch:
             for (long i_basis = 0; i_basis < n_basis; i_basis++) {
                 long i_basis_shift = n_monomials*i_basis;
                 scalar_t base_multiplier = grad_atomic_energy*multipliers_ptr[i_basis];
-                for (long i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
+                for (int16_t i_monomial = 0; i_monomial < n_monomials; i_monomial++) {
                     scalar_t temp = base_multiplier;
-                    for (long j_monomial = 0; j_monomial < n_monomials; j_monomial++) {
+                    for (int16_t j_monomial = 0; j_monomial < n_monomials; j_monomial++) {
                         if (j_monomial == i_monomial) continue;
                         temp *= nu1_basis_ptr[i_atom_shift+indices_ptr[i_basis_shift+j_monomial]];
                     }

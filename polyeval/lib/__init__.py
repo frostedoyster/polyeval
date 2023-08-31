@@ -21,7 +21,7 @@ def optimized_implementation(nu1_basis, indices, multipliers):
         raise ValueError("The two float tensors must have the same dtype")
 
     if nu1_basis.is_cuda:
-        result = torch.ops.polyeval_cu.polyeval(nu1_basis, indices, multipliers)
+        result = torch.ops.polyeval_cu.polyeval(nu1_basis, indices, multipliers, 128, 4)
     else:
         result = torch.ops.polyeval_cc.polyeval(nu1_basis, indices, multipliers)
 

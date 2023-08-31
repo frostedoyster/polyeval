@@ -13,7 +13,7 @@ def benchmark(dtype, device):
     print(f"Benchmarking dtype={dtype} and device={device}")
 
     nu1_basis = torch.rand((n_atoms, n_nu1), dtype=dtype, device=device)
-    indices = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.long, device=device)
+    indices = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.int16, device=device)
     multipliers = torch.rand((n_basis,), dtype=dtype, device=device)
 
     # Warm-up reference:

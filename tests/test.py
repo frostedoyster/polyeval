@@ -17,7 +17,7 @@ def test(dtype, device):
     print(f"Testing dtype={dtype} and device={device}")
 
     nu1_basis_ref = torch.rand((n_atoms, n_nu1), dtype=dtype, device=device, requires_grad=True)
-    indices_ref = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.long, device=device)
+    indices_ref = torch.randint(n_nu1, (n_basis, polynomial_order), dtype=torch.int16, device=device)
     multipliers_ref = torch.rand((n_basis,), dtype=dtype, device=device)
 
     nu1_basis_opt = nu1_basis_ref.clone().detach().requires_grad_(True)
