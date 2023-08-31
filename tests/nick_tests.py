@@ -2,6 +2,7 @@ import torch
 from polyeval.lib import reference_implementation, optimized_implementation
 from time import time
 
+torch.set_printoptions(precision=5)
 # def python_implementation(nu1_basis, indices, multipliers):
 #     n_atoms = nu1_basis.shape[0]
 #     atom_energies = torch.zeros(n_atoms, dtype=nu1_basis.dtype, device=nu1_basis.device)
@@ -46,8 +47,7 @@ print(indices.shape)
 
 start = time()
 for i in range(1000):
-    cuda = torch.ops.polyeval_cu.polyeval(
-        nu1_basis_ref, indices, multipliers_ref, 256, 4)
+    cuda = torch.ops.polyeval_cu.polyeval(nu1_basis_ref, indices, multipliers_ref, 256, 4)
 end = time()
 torch.cuda.synchronize()
 
