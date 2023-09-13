@@ -150,9 +150,9 @@ __global__ void forward2_kernel(
     size_t space = 0;
 
     /* SHARED BUFFERS */
-    scalar_t *buffer_nu1 = shared_array<scalar_t>(blockDim.y * nnu1, sptr, &space);
+    scalar_t *buffer_nu1 = shared_array<scalar_t>(nnu1, sptr, &space);
 
-    int32_t atom_id = blockIdx.x * blockDim.y + threadIdx.y;
+    int32_t atom_id = blockIdx.x;
 
     if (atom_id > natoms)
     {
@@ -162,7 +162,7 @@ __global__ void forward2_kernel(
     // load all of nu1_basis into shared memory
     for (int32_t i = threadIdx.x; i < nnu1; i += blockDim.x)
     {
-        buffer_nu1[threadIdx.y * nnu1 + i] = nu1_basis[atom_id][i];
+        buffer_nu1[i] = nu1_basis[atom_id][i];
     }
 
     __syncthreads();
@@ -173,16 +173,16 @@ __global__ void forward2_kernel(
 
     for (int32_t basis = threadIdx.x; basis < nbasis; basis += blockDim.x)
     {
-        scalar_t tmp = 1.0;
+
+        int16_t idx = indices[0][basis];
+        scalar_t tmp = buffer_nu1[idx];
 
 #pragma unroll
-        for (uint8_t i_monomial = 0; i_monomial < n_monomials; i_monomial++)
+        for (uint8_t i_monomial = 1; i_monomial < n_monomials; i_monomial++)
         {
-            int16_t idx = indices[i_monomial][basis];
+            idx = indices[i_monomial][basis];
 
-            scalar_t val = buffer_nu1[threadIdx.y * nnu1 + idx];
-
-            tmp *= val;
+            tmp *= buffer_nu1[idx];
         }
 
         // kahans summation for F32
@@ -230,7 +230,7 @@ torch::Tensor forward_gpu(torch::Tensor nu1_basis,
 
     dim3 block_dim(nb);
 
-    dim3 grid_dim(nthreadx, nthready, 1);
+    dim3 grid_dim(nthreadx, 1, 1);
 
     AT_DISPATCH_FLOATING_TYPES(
         nu1_basis.type(), "forward_gpu", ([&]
@@ -238,13 +238,14 @@ torch::Tensor forward_gpu(torch::Tensor nu1_basis,
                                               void *sptr = nullptr;
                                               size_t space = 0;
 
-                                              shared_array<scalar_t>(nthready * nnu1, sptr, &space);
+                                              shared_array<scalar_t>(nnu1, sptr, &space);
 
                                               forward2_kernel<scalar_t, n_monomials><<<block_dim, grid_dim, space>>>(
                                                   nu1_basis.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                                                   indices.packed_accessor32<int16_t, 2, torch::RestrictPtrTraits>(),
                                                   multipliers.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>(),
-                                                  output.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>()); }
+                                                  output.packed_accessor32<scalar_t, 1, torch::RestrictPtrTraits>());
+                                          }
 
                                           ));
 

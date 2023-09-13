@@ -45,9 +45,10 @@ indices = indices_ref.transpose(-1, -2).contiguous()
 
 print(indices.shape)
 
+torch.cuda.synchronize()
 start = time()
 for i in range(1000):
-    cuda = torch.ops.polyeval_cu.polyeval(nu1_basis_ref, indices, multipliers_ref, 256, 4)
+    cuda = torch.ops.polyeval_cu.polyeval(nu1_basis_ref, indices, multipliers_ref, 512, 1)
 end = time() 
 torch.cuda.synchronize()
 
